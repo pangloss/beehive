@@ -53,9 +53,10 @@ end
 
 
 class Bee
-  attr_accessor :hive, :status, :matrix, :quality, :num_visits
+  attr_accessor :hive, :status, :matrix, :quality, :num_visits, :op
 
   def initialize(hive, status)
+    self.op = []
     self.hive = hive
     self.status = status
     self.matrix = generate_random_matrix
@@ -111,6 +112,7 @@ class Bee
     prob = rand
     if neighbour_quality < quality
       if prob < hive.prob_mistake
+        self.op << '-'
         self.num_visits += 1
       else
         self.matrix = neighbour
@@ -118,6 +120,7 @@ class Bee
       end
     else
       if prob < hive.prob_mistake
+        self.op << '+'
         self.matrix = neighbour
         dance!
       else
@@ -205,7 +208,7 @@ class Hive
 
   def check_bee(bee)
     if quality > bee.quality
-      history << [best, bee.status, cycle, { :i => improvement, :mv => max_visits, :pp => prob_persuasion, :pm => prob_mistake, :q => quality }]
+      history << [best.join, bee.status, bee.op.join, cycle, { :i => improvement, :mv => max_visits, :pp => prob_persuasion, :pm => prob_mistake, :q => quality }]
       self.best = bee.matrix.clone
       self.quality = bee.quality
     end
@@ -258,6 +261,7 @@ class Hive
       while group.length > num
         break if group.length == 1
         bee = group.pop
+        bee.op = []
         bee.status = :active
       end
     end
