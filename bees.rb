@@ -3,7 +3,7 @@ class Destinations
 
   def initialize(num)
     self.num = num
-    self.cities = ('A'..'Z').to_a[0,num]
+    self.cities = ('a'..'z').to_a[0,num]
   end
 
   def distance(a, b)
@@ -29,6 +29,29 @@ class Destinations
 end
 
 
+class TravellingSalesBee < Bee
+  def calculate_quality(m)
+    workspace = hive.workspace
+    m.each_cons(2).reduce(0) do |t, (a, b)|
+      t + workspace.distance(a, b)
+    end
+  end
+
+  def generate_random_matrix
+    hive.workspace.random
+  end
+
+  def mutate_data(m)
+    m = m.clone
+    a = rand(m.length)
+    b = a == m.length - 1 ? 0 : a + 1
+    m[a], m[b] = m[b], m[a]
+    m
+  end
+end
+
+
+
 class Bee
   attr_accessor :hive, :status, :matrix, :quality, :num_visits
 
@@ -51,37 +74,29 @@ class Bee
     n
   end
 
-  def generate_random_matrix
-    hive.cities.random
-  end
-
-  def calculate_quality(m)
-    cities = hive.cities
-    m.each_cons(2).reduce(0) do |t, (a, b)|
-      t + cities.distance(a, b)
-    end
-  end
-
-  def generate_neighbour_matrix(m)
-    m = m.clone
-    a = rand(m.length)
-    b = a == m.length - 1 ? 0 : a + 1
-    m[a], m[b] = m[b], m[a]
-    m
-  end
-
   def work!
     case status
     when :active
-      bee_active!
+      active!
     when :scout
-      bumble!
+      scout!
     when :inactive
-      bee_lazy
+      inactive!
     end
   end
 
-  def bumble!
+  def over_visit_limit!
+    self.status = :inactive
+    self.num_visits = 0
+    hive.went_inactive self
+  end
+
+  def dance!
+    hive.check_bee self
+    hive.waggle!(self)
+  end
+
+  def scout!
     path = generate_random_matrix
     path_quality = calculate_quality(path)
     if path_quality < quality
@@ -90,11 +105,8 @@ class Bee
     end
   end
 
-  def bee_lazy
-  end
-
-  def bee_active!
-    neighbour = generate_neighbour_matrix matrix
+  def active!
+    neighbour = mutate_data matrix
     neighbour_quality = calculate_quality(neighbour)
     prob = rand
     if neighbour_quality < quality
@@ -114,15 +126,19 @@ class Bee
     end
   end
 
-  def over_visit_limit!
-    self.status = :inactive
-    self.num_visits = 0
-    hive.went_inactive self
+  def inactive!
   end
 
-  def dance!
-    hive.check_bee self
-    hive.waggle!(self)
+  def calculate_quality(m)
+    raise 'Implement Me'
+  end
+
+  def generate_random_matrix
+    raise 'Implement Me'
+  end
+
+  def mutate_data
+    raise 'Implement Me'
   end
 
   def to_s
@@ -136,53 +152,57 @@ end
 
 
 class Hive
-  ProbPersuasion = 0.90
+  ProbPersuasion = 0.70
   ProbMistake = 0.01
 
-  attr_accessor :cities
+  attr_accessor :workspace
 
-  attr_accessor :bees, :inactive_bees
-  attr_accessor :best, :quality
+  attr_accessor :bees, :inactive_bees, :scouts
+  attr_accessor :best, :quality, :initial_quality
+  attr_accessor :history, :cycle
 
-  attr_accessor :num_inactive, :num_active, :num_scout
+  attr_accessor :num_inactive, :num_active, :num_scout, :initial_scout, :initial_inactive
+  attr_accessor :initial_max_visits, :initial_max_cycles
   attr_accessor :max_visits, :max_cycles
 
-  def inspect
-    "HIVE STATUS -- Best Quality: #{ quality }\n     Best Matrix: #{ best.join('->') }"
-  end
+  def initialize(bee_type, workspace, num_inactive, num_active, num_scout, max_visits, max_cycles)
+    self.workspace          = workspace
+    self.num_active         = num_active
+    self.initial_inactive   = self.num_inactive = num_inactive
+    self.initial_scout      = self.num_scout    = num_scout
+    self.initial_max_visits = self.max_visits   = max_visits
+    self.initial_max_cycles = self.max_cycles   = max_cycles
 
-  def initialize(num_inactive, num_active, num_scout, max_visits, max_cycles, cities)
-    self.cities = cities
-    self.num_inactive  = num_inactive
-    self.num_active    = num_active
-    self.num_scout     = num_scout
-    self.max_visits = max_visits
-    self.max_cycles = max_cycles
-
-    self.inactive_bees = []
     self.bees = []
     self.inactive_bees = []
+    self.scouts = []
+    self.history = []
 
-    random_bee = Bee.new(self, :active)
+    random_bee = bee_type.new(self, :active)
     self.best = random_bee.matrix.clone
-    self.quality = random_bee.quality
+    self.initial_quality = self.quality = random_bee.quality
+
 
     num_inactive.times do
-      bee = Bee.new(self, :inactive)
+      bee = bee_type.new(self, :inactive)
       bees << bee
       inactive_bees << bee
     end
     num_active.times do
-      bees << Bee.new(self, :active)
+      bees << bee_type.new(self, :active)
     end
     num_scout.times do
-      bees << Bee.new(self, :scout)
+      bee = bee_type.new(self, :scout)
+      bees << bee
+      scouts << bee
     end
     bees.each { |bee| check_bee bee }
+    self.history = [history.last]
   end
 
   def check_bee(bee)
     if quality > bee.quality
+      history << [bee.status, cycle, num_scout.to_i, quality, best]
       self.best = bee.matrix.clone
       self.quality = bee.quality
     end
@@ -198,14 +218,33 @@ class Hive
     print "           "
     increment = max_cycles / 10
     max_cycles.times do |n|
+      self.cycle = n
       bees.each do |bee|
         bee.work!
       end
-      if n % increment == 0
-        print '*'
-      end
+      self.num_scout = reallocate(num_scout, initial_scout, scouts)
+      #self.num_inactive = reallocate(num_inactive, initial_inactive, inactive_bees)
+      print '*' if n % increment == 0
     end
     puts
+  end
+
+  def reallocate(num, initial, group)
+    last5 = history[-10..-1]
+    if last5 and last5.all? { |a| a.first == :active }
+      improvement = 0.001
+    else
+      improvement = quality / initial_quality.to_f
+    end
+    if num > initial * improvement
+      num = initial * improvement
+      while group.length > num
+        break if group.length == 1
+        bee = group.pop
+        bee.status = :active
+      end
+    end
+    num
   end
 
   def went_inactive(bee)
@@ -221,7 +260,13 @@ class Hive
       end
     end
   end
+
+  def inspect
+    "HIVE STATUS -- Best Quality: #{ quality }\n     Best Matrix: #{ best.join('->') }\n#{ history.map(&:inspect).join("\n") }"
+  end
 end
+
+
 
 def reload!
   load __FILE__
@@ -229,17 +274,15 @@ end
 
 def run
   num_inactive = 20
-  num_active = 50
-  num_scout = 30
+  num_active = 10
+  num_scout = 70
   max_visits = 100
-  max_cycles = 1500
+  max_cycles = 2500
 
-  cities = Destinations.new 20
-
-  hive = Hive.new num_inactive, num_active, num_scout, max_visits, max_cycles, cities
+  hive = Hive.new TravellingSalesBee, Destinations.new(20), num_inactive, num_active, num_scout, max_visits, max_cycles
 
   puts 'initial random hive:'
-  puts hive
+  puts hive.inspect
   hive.solve
   hive
 end
