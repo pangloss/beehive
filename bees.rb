@@ -1,8 +1,9 @@
 class Destinations
-  attr_accessor :cities
+  attr_accessor :cities, :num
 
   def initialize(num)
-    self.cities = ('A'..'Z')[0,num]
+    self.num = num
+    self.cities = ('A'..'Z').to_a[0,num]
   end
 
   def distance(a, b)
@@ -15,15 +16,11 @@ class Destinations
   end
 
   def shortest_path_length
-    (cities.Length - 1)
-  end
-
-  def number_of_possible_paths
-    (1...cities.length).inject(1) { |t, n| t * n }
+    num - 1
   end
 
   def random
-    cities.sample(cities.length)
+    cities.sample(num)
   end
 
   def to_s
@@ -33,7 +30,7 @@ end
 
 
 class Bee
-  attr_accessor :status, :matrix, :quality, :num_visits
+  attr_accessor :hive, :status, :matrix, :quality, :num_visits
 
   def initialize(hive, status)
     self.hive = hive
@@ -42,32 +39,35 @@ class Bee
   end
 
   def matrix=(m)
+    @matrix = m
     self.quality = calculate_quality(m)
     self.num_visits = 0
-    @matrix = m
+    m
   end
 
   def num_visits=(n)
-    self.num_visits = n
+    @num_visits = n
     over_visit_limit! if n > hive.max_visits
+    n
   end
 
   def generate_random_matrix
     hive.cities.random
   end
 
-  def calculate_quality(matrix)
-    matrix.each_cons(2).reduce(0) do |t, (a, b)|
-      t + hive.cities.distance(a, b)
+  def calculate_quality(m)
+    cities = hive.cities
+    m.each_cons(2).reduce(0) do |t, (a, b)|
+      t + cities.distance(a, b)
     end
   end
 
-  def generate_neighbour_matrix(matrix)
-    matrix = matrix.clone
-    a = rand(matrix.length)
-    b = a == matrix.length - 1 ? 0 : a
-    matrix[a], matrix[b] = matrix[b], matrix[a]
-    matrix
+  def generate_neighbour_matrix(m)
+    m = m.clone
+    a = rand(m.length)
+    b = a == m.length - 1 ? 0 : a + 1
+    m[a], m[b] = m[b], m[a]
+    m
   end
 
   def work!
@@ -130,7 +130,7 @@ class Bee
   end
 
   def inspect
-    "#{to_s}\n Matrix: #{ matrix.join '->' }"
+    "#{to_s}\tMatrix: #{ matrix.join '->' }"
   end
 end
 
@@ -142,12 +142,13 @@ class Hive
   attr_accessor :cities
 
   attr_accessor :bees, :inactive_bees
-  attr_accessor :best_matrix, :best_quality
+  attr_accessor :best, :quality
 
   attr_accessor :num_inactive, :num_active, :num_scout
   attr_accessor :max_visits, :max_cycles
 
-  def to_s
+  def inspect
+    "HIVE STATUS -- Best Quality: #{ quality }\n     Best Matrix: #{ best.join('->') }"
   end
 
   def initialize(num_inactive, num_active, num_scout, max_visits, max_cycles, cities)
@@ -162,28 +163,28 @@ class Hive
     self.bees = []
     self.inactive_bees = []
 
-    Bee.new(self, :active)
-    self.best_matrix = random_bee.matrix.clone
-    self.best_quality = random_bee.quality
+    random_bee = Bee.new(self, :active)
+    self.best = random_bee.matrix.clone
+    self.quality = random_bee.quality
 
     num_inactive.times do
-      bee = Bee.new self, bees.length, :inactive
+      bee = Bee.new(self, :inactive)
       bees << bee
       inactive_bees << bee
     end
     num_active.times do
-      bees << Bee.new self, bees.length, :active
+      bees << Bee.new(self, :active)
     end
     num_scout.times do
-      bees << Bee.new self, bees.length, :scout
+      bees << Bee.new(self, :scout)
     end
     bees.each { |bee| check_bee bee }
   end
 
   def check_bee(bee)
-    if best_quality > bee.quality
-      self.best_matrix = bee.matrix.clone
-      self.best_quality = bee.quality
+    if quality > bee.quality
+      self.best = bee.matrix.clone
+      self.quality = bee.quality
     end
   end
 
@@ -200,7 +201,9 @@ class Hive
       bees.each do |bee|
         bee.work!
       end
-      print '*' if n % increment == 0
+      if n % increment == 0
+        print '*'
+      end
     end
     puts
   end
@@ -220,24 +223,23 @@ class Hive
   end
 end
 
-class TravelingSalesmanHive < Hive
-
+def reload!
+  load __FILE__
 end
 
-puts("\nBegin Simulated Bee Colony algorithm demo\n")
-puts("End Simulated Bee Colony demo")
+def run
+  num_inactive = 20
+  num_active = 50
+  num_scout = 30
+  max_visits = 100
+  max_cycles = 1500
 
-num_inactive = 20
-num_active = 50
-num_scout = 30
-max_visits = 100
-max_cycles = 3460
+  cities = Destinations.new 20
 
-cities = Destinations.new 20
+  hive = Hive.new num_inactive, num_active, num_scout, max_visits, max_cycles, cities
 
-hive = new TravelingSalesmanHive(num_unactive, num_active, num_scout, max_visits, max_cycles, cities);
-
-puts 'initial random hive:'
-puts hive
-hive.solve
-puts 'finitos'
+  puts 'initial random hive:'
+  puts hive
+  hive.solve
+  hive
+end
