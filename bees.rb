@@ -110,14 +110,14 @@ class Bee
     neighbour_quality = calculate_quality(neighbour)
     prob = rand
     if neighbour_quality < quality
-      if prob < Hive::ProbMistake
+      if prob < hive.prob_mistake
         self.num_visits += 1
       else
         self.matrix = neighbour
         dance!
       end
     else
-      if prob < Hive::ProbMistake
+      if prob < hive.prob_mistake
         self.matrix = neighbour
         dance!
       else
@@ -152,20 +152,23 @@ end
 
 
 class Hive
-  ProbPersuasion = 0.70
-  ProbMistake = 0.01
+  ProbMistakeRange = -0.01..0.03
+  ProbPersuasionRange = 0.95..0.8
 
   attr_accessor :workspace
 
   attr_accessor :bees, :inactive_bees, :scouts
   attr_accessor :best, :quality, :initial_quality
   attr_accessor :history, :cycle
+  attr_accessor :prob_persuasion, :prob_mistake
 
   attr_accessor :num_inactive, :num_active, :num_scout, :initial_scout, :initial_inactive
   attr_accessor :initial_max_visits, :initial_max_cycles
   attr_accessor :max_visits, :max_cycles
 
   def initialize(bee_type, workspace, num_inactive, num_active, num_scout, max_visits, max_cycles)
+    self.prob_persuasion = Hive::ProbPersuasionRange.first
+    self.prob_mistake = Hive::ProbMistakeRange.first
     self.workspace          = workspace
     self.num_active         = num_active
     self.initial_inactive   = self.num_inactive = num_inactive
@@ -202,7 +205,7 @@ class Hive
 
   def check_bee(bee)
     if quality > bee.quality
-      history << [bee.status, cycle, num_scout.to_i, quality, best]
+      history << [best, bee.status, cycle, { :i => improvement, :mv => max_visits, :pp => prob_persuasion, :pm => prob_mistake, :q => quality }]
       self.best = bee.matrix.clone
       self.quality = bee.quality
     end
@@ -224,20 +227,34 @@ class Hive
       end
       self.num_scout = reallocate(num_scout, initial_scout, scouts)
       #self.num_inactive = reallocate(num_inactive, initial_inactive, inactive_bees)
+      adjust_settings
       print '*' if n % increment == 0
     end
     puts
   end
 
+  def adjust_settings
+    #self.max_visits = initial_max_visits / (improvement * 3)
+    r = Hive::ProbPersuasionRange
+    self.prob_persuasion = r.first + (r.last - r.first) * (1 - improvement)
+
+    r = Hive::ProbMistakeRange
+    self.prob_mistake = r.first + (r.last - r.first) * (1 - improvement)
+  end
+
+  def improvement
+    quality / initial_quality.to_f
+  end
+
   def reallocate(num, initial, group)
     last5 = history[-10..-1]
     if last5 and last5.all? { |a| a.first == :active }
-      improvement = 0.001
+      impr = 0.001
     else
-      improvement = quality / initial_quality.to_f
+      impr = improvement
     end
-    if num > initial * improvement
-      num = initial * improvement
+    if num > initial * impr
+      num = initial * impr
       while group.length > num
         break if group.length == 1
         bee = group.pop
@@ -255,7 +272,7 @@ class Hive
 
   def waggle!(instructor)
     inactive_bees.each do |student|
-      if instructor.quality < student.quality and Hive::ProbPersuasion > rand
+      if instructor.quality < student.quality and prob_persuasion > rand
         student.matrix = instructor.matrix
       end
     end
