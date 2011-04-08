@@ -1,56 +1,3 @@
-class Destinations
-  attr_accessor :cities, :num
-
-  def initialize(num)
-    self.num = num
-    self.cities = ('a'..'z').to_a[0,num]
-  end
-
-  def distance(a, b)
-    a, b = "#{a}#{b}".each_byte.to_a
-    if a < b
-      1.0 * b - a
-    else
-      1.5 * a - b
-    end
-  end
-
-  def shortest_path_length
-    num - 1
-  end
-
-  def random
-    cities.sample(num)
-  end
-
-  def to_s
-    "Cities: #{ cities.join ' ' }"
-  end
-end
-
-
-class TravellingSalesBee < Bee
-  def calculate_quality(m)
-    workspace = hive.workspace
-    m.each_cons(2).reduce(0) do |t, (a, b)|
-      t + workspace.distance(a, b)
-    end
-  end
-
-  def generate_random_matrix
-    hive.workspace.random
-  end
-
-  def mutate_data(m)
-    m = m.clone
-    a = rand(m.length)
-    b = a == m.length - 1 ? 0 : a + 1
-    m[a], m[b] = m[b], m[a]
-    m
-  end
-end
-
-
 
 class Bee
   attr_accessor :hive, :status, :matrix, :quality, :num_visits, :op
@@ -284,6 +231,59 @@ class Hive
 
   def inspect
     "HIVE STATUS -- Best Quality: #{ quality }\n     Best Matrix: #{ best.join('->') }\n#{ history.map(&:inspect).join("\n") }"
+  end
+end
+
+
+class Destinations
+  attr_accessor :cities, :num
+
+  def initialize(num)
+    self.num = num
+    self.cities = ('a'..'z').to_a[0,num]
+  end
+
+  def distance(a, b)
+    a, b = "#{a}#{b}".each_byte.to_a
+    if a < b
+      1.0 * b - a
+    else
+      1.5 * a - b
+    end
+  end
+
+  def shortest_path_length
+    num - 1
+  end
+
+  def random
+    cities.sample(num)
+  end
+
+  def to_s
+    "Cities: #{ cities.join ' ' }"
+  end
+end
+
+
+class TravellingSalesBee < Bee
+  def calculate_quality(m)
+    workspace = hive.workspace
+    m.each_cons(2).reduce(0) do |t, (a, b)|
+      t + workspace.distance(a, b)
+    end
+  end
+
+  def generate_random_matrix
+    hive.workspace.random
+  end
+
+  def mutate_data(m)
+    m = m.clone
+    a = rand(m.length)
+    b = a == m.length - 1 ? 0 : a + 1
+    m[a], m[b] = m[b], m[a]
+    m
   end
 end
 
